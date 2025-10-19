@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub') // Docker Hub credentials in Jenkins
         GITHUB_CREDENTIALS = 'github'                    // GitHub credentials in Jenkins
-        IMAGE_NAME = 'phaneendra/my-site'                      // Docker Hub repo
+        IMAGE_NAME = 'phani051/my-site'                      // Docker Hub repo
         GIT_REPO = 'https://github.com/phani051/dockerlearning.git' // Replace with your repo
         BRANCH = 'main'
         NODE_OPTIONS = '--openssl-legacy-provider'            // For React build if needed
