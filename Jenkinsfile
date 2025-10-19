@@ -55,8 +55,8 @@ pipeline {
                             docker rm my-site-container
                         fi
 
-                        # Run new container on port 3000
-                        docker run -d --name my-site-container -p 3000:3000 ${IMAGE_NAME}:${COMMIT_HASH}
+                        # Run new container on port 80
+                        docker run -d --name my-site-container -p 3000:80 ${IMAGE_NAME}:${COMMIT_HASH}
                     """
                 }
             }
