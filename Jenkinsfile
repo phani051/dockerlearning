@@ -2,12 +2,11 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub') // Docker Hub credentials in Jenkins
-        GITHUB_CREDENTIALS = 'github'                    // GitHub credentials in Jenkins
-        IMAGE_NAME = 'phani051/my-site'                      // Docker Hub repo
-        GIT_REPO = 'https://github.com/phani051/dockerlearning.git' // Replace with your repo
+        GITHUB_CREDENTIALS = 'github'          // GitHub credentials ID
+        IMAGE_NAME = 'phani051/my-site'        // Docker Hub repo
+        GIT_REPO = 'https://github.com/phani051/dockerlearning.git'
         BRANCH = 'main'
-        NODE_OPTIONS = '--openssl-legacy-provider'            // For React build if needed
+        NODE_OPTIONS = '--openssl-legacy-provider'  // React build fix for Node 18+
     }
 
     stages {
@@ -28,19 +27,25 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    docker.build("${IMAGE_NAME}:${COMMIT_HASH}")
-                }
+                // Build Docker image which will also run npm install and npm build inside Dockerfile
+                sh """
+                    docker build \
+                        --build-arg NODE_OPTIONS='${NODE_OPTIONS}' \
+                        -t ${IMAGE_NAME}:${COMMIT_HASH} .
+                """
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', "${DOCKERHUB_CREDENTIALS}") {
-                        docker.image("${IMAGE_NAME}:${COMMIT_HASH}").push()
-                        docker.image("${IMAGE_NAME}:${COMMIT_HASH}").push('latest') // optional latest tag
-                    }
+                // Securely use Docker Hub credentials without exposing them
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
+                    sh """
+                        echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+                        docker push ${IMAGE_NAME}:${COMMIT_HASH}
+                        docker tag ${IMAGE_NAME}:${COMMIT_HASH} ${IMAGE_NAME}:latest
+                        docker push ${IMAGE_NAME}:latest
+                    """
                 }
             }
         }
