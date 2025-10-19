@@ -27,7 +27,6 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                // Build Docker image which will also run npm install and npm build inside Dockerfile
                 sh """
                     docker build \
                         --build-arg NODE_OPTIONS='${NODE_OPTIONS}' \
@@ -36,15 +35,28 @@ pipeline {
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Push & Run Docker Image') {
             steps {
-                // Securely use Docker Hub credentials without exposing them
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
                     sh """
+                        # Login to Docker Hub
                         echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+
+                        # Push image with commit hash
                         docker push ${IMAGE_NAME}:${COMMIT_HASH}
+
+                        # Tag as latest and push
                         docker tag ${IMAGE_NAME}:${COMMIT_HASH} ${IMAGE_NAME}:latest
                         docker push ${IMAGE_NAME}:latest
+
+                        # Stop and remove previous container if exists
+                        if [ \$(docker ps -q -f name=my-site-container) ]; then
+                            docker stop my-site-container
+                            docker rm my-site-container
+                        fi
+
+                        # Run new container on port 3000
+                        docker run -d --name my-site-container -p 3000:3000 ${IMAGE_NAME}:${COMMIT_HASH}
                     """
                 }
             }
