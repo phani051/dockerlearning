@@ -65,7 +65,7 @@ pipeline {
                         docker service update --image ${IMAGE_NAME}:latest --force $SERVICE_NAME
                     else
                         echo "Creating new service..."
-                        docker service create --name $SERVICE_NAME -p 3000:80 ${IMAGE_NAME}:latest
+                        docker service create --name $SERVICE_NAME -p 3000:80 --replicas 4 ${IMAGE_NAME}:latest
                     fi
                 '''
             }
