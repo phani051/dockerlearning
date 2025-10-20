@@ -57,7 +57,7 @@ pipeline {
                     # Initialize Swarm if not already initialized
                     docker info | grep -q "Swarm: active" || docker swarm init
 
-                    SERVICE_NAME=my-site-service
+                    SERVICE_NAME=my-site
 
                     # Check if service exists
                     if docker service ls --format '{{.Name}}' | grep -q "$SERVICE_NAME"; then
