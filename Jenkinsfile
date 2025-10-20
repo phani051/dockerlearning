@@ -35,29 +35,48 @@ pipeline {
             }
         }
 
-        stage('Push & Run Docker Image') {
+        stage('Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
                     sh """
-                        # Login to Docker Hub
                         echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-
-                        # Push image with commit hash
                         docker push ${IMAGE_NAME}:${COMMIT_HASH}
-
-                        # Tag as latest and push
                         docker tag ${IMAGE_NAME}:${COMMIT_HASH} ${IMAGE_NAME}:latest
                         docker push ${IMAGE_NAME}:latest
-
-                        # Stop and remove previous container if exists
-                        if [ \$(docker ps -q -f name=my-site-container) ]; then
-                            docker stop my-site-container
-                            docker rm my-site-container
-                        fi
-
-                        # Run new container on port 80
-                        docker run -d --name my-site-container -p 3000:80 ${IMAGE_NAME}:${COMMIT_HASH}
                     """
+                }
+            }
+        }
+
+        stage('Deploy to Docker Swarm') {
+            steps {
+                script {
+                    // Ensure Docker Swarm is active
+                    def swarmStatus = sh(script: "docker info --format '{{.Swarm.LocalNodeState}}'", returnStdout: true).trim()
+                    if (swarmStatus != 'active') {
+                        echo 'Docker Swarm not active — initializing...'
+                        sh 'docker swarm init || true'
+                    }
+
+                    // Check if service exists
+                    def serviceExists = sh(
+                        script: "docker service ls --format '{{.Name}}' | grep -w my-site || true",
+                        returnStdout: true
+                    ).trim()
+
+                    if (serviceExists == 'my-site') {
+                        echo "Updating existing Swarm service..."
+                        sh "docker service update --image ${IMAGE_NAME}:latest my-site"
+                    } else {
+                        echo 'Creating new Swarm service...'
+                        sh """
+                            docker service create \
+                                --name my-site \
+                                --publish 3000:80 \
+                                --replicas 2 \
+                                ${IMAGE_NAME}:latest
+                        """
+                    }
                 }
             }
         }
@@ -69,3 +88,4 @@ pipeline {
         }
     }
 }
+ 
