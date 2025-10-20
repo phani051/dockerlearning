@@ -27,6 +27,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
+                echo "Building Docker image for commit ${COMMIT_HASH}..."
                 sh """
                     docker build \
                         --build-arg NODE_OPTIONS='${NODE_OPTIONS}' \
@@ -37,6 +38,7 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
+                echo "Pushing Docker image to Docker Hub..."
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
                     sh """
                         echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
@@ -50,42 +52,59 @@ pipeline {
 
         stage('Deploy to Docker Swarm') {
             steps {
-                script {
-                    // Ensure Docker Swarm is active
-                    def swarmStatus = sh(script: "docker info --format '{{.Swarm.LocalNodeState}}'", returnStdout: true).trim()
-                    if (swarmStatus != 'active') {
-                        echo 'Docker Swarm not active — initializing...'
-                        sh 'docker swarm init || true'
-                    }
+                echo "Deploying Docker image to Swarm..."
+                sh '''
+                    # Initialize Swarm if not already initialized
+                    docker info | grep -q "Swarm: active" || docker swarm init
 
-                    // Check if service exists
-                    def serviceExists = sh(
-                        script: "docker service ls --format '{{.Name}}' | grep -w my-site || true",
-                        returnStdout: true
-                    ).trim()
+                    SERVICE_NAME=my-site-service
 
-                    if (serviceExists == 'my-site') {
-                        echo "Updating existing Swarm service..."
-                        sh "docker service update --image ${IMAGE_NAME}:latest my-site"
-                    } else {
-                        echo 'Creating new Swarm service...'
-                        sh """
-                            docker service create \
-                                --name my-site \
-                                --publish 3000:80 \
-                                --replicas 2 \
-                                ${IMAGE_NAME}:latest
-                        """
-                    }
-                }
+                    # Check if service exists
+                    if docker service ls --format '{{.Name}}' | grep -q "$SERVICE_NAME"; then
+                        echo "Service already exists. Updating with latest image..."
+                        docker service update --image ${IMAGE_NAME}:latest --force $SERVICE_NAME
+                    else
+                        echo "Creating new service..."
+                        docker service create --name $SERVICE_NAME -p 3000:80 ${IMAGE_NAME}:latest
+                    fi
+                '''
+            }
+        }
+
+        stage('Cleanup Old Images') {
+            steps {
+                echo "Cleaning up old phani051/my-site images..."
+                sh '''
+                    USED_IMAGES=$(docker ps --format '{{.Image}}' | grep 'phani051/my-site' || true)
+                    SERVICE_IMAGES=$(docker service ls --format '{{.Image}}' | grep 'phani051/my-site' || true)
+                    KEEP_IMAGES=$(echo "$USED_IMAGES $SERVICE_IMAGES" | tr ' ' '\\n' | sort -u)
+
+                    echo "Currently used images:"
+                    echo "$KEEP_IMAGES"
+
+                    ALL_IMAGES=$(docker images phani051/my-site --format '{{.ID}} {{.Repository}}:{{.Tag}}')
+
+                    for IMAGE_ID in $(echo "$ALL_IMAGES" | awk '{print $1}'); do
+                        IMAGE_TAG=$(echo "$ALL_IMAGES" | grep "$IMAGE_ID" | awk '{print $2}')
+                        if ! echo "$KEEP_IMAGES" | grep -q "$IMAGE_TAG"; then
+                            echo "Removing unused image: $IMAGE_TAG"
+                            docker rmi -f "$IMAGE_ID" || true
+                        fi
+                    done
+                '''
             }
         }
     }
 
     post {
+        success {
+            echo "✅ Deployment successful! The latest version is running in Docker Swarm."
+        }
+        failure {
+            echo "❌ Deployment failed. Please check Jenkins logs for details."
+        }
         always {
             cleanWs() // Clean workspace after build
         }
     }
 }
- 
