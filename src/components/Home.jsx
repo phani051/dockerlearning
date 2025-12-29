@@ -6,7 +6,7 @@ function Home(){
           <div class="top-container">
             <h1>Phaneendra Kumar</h1>
             <h6>
-              am <span>enthusiastic </span>techi
+              am <span>enthusiastic </span>tech Junkie
             </h6>
             <div class="arrow">
               <a class="nostyle" href="#About">
